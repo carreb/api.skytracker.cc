@@ -23,3 +23,8 @@ app.use(cors())
 
 // routes
 const slayer = require("./routes/slayer.js")
+
+
+app.use('/slayer', slayer)
+
+app.listen(port, () => console.log('Express online at port ' + port ))
