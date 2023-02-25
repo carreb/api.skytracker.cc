@@ -9,10 +9,54 @@ router.post('/eman/createuser', createUser, async (req, res) => {
 
 router.get("/eman", parseEmanQuery, getUuidFromName, populateEmanBosses, async (req, res) => {
     let p = res.player
-    return res.status(200).json({success: true, data: {
-        uuid: p.uuid,
-        bosses: p.bosses
-    }})
+    // calculate averages
+    let average_magic_find = 0
+    let average_kill_time = 0
+    let average_spawn_time = 0
+    let total_core_drops = 0
+    let total_tracked_kills = 0
+    let count = 0
+    p.bosses.forEach((boss) => {
+        average_magic_find += boss.magicFind
+        average_kill_time += boss.timeToKill
+        average_spawn_time += boss.timeToSpawn
+        if (boss.drops.includes("Judgement Core")) {
+            total_core_drops++
+        }
+        if (boss.status == "killed") {
+            total_tracked_kills++
+        }
+
+        count++
+    })
+    average_magic_find = (average_magic_find / count).toFixed(2)
+    average_kill_time = Math.floor(average_kill_time / count)
+    average_spawn_time = Math.floor(average_spawn_time / count)
+    average_success_chance = total_tracked_kills / count
+    average_bosses_per_core = (total_core_drops / total_tracked_kills * 100).toFixed(2)
+
+    //return values
+    return res.status(200).json({
+      success: true,
+      uuid: p.uuid,
+      stats: {
+        total_core_drops: total_core_drops,
+        average_bosses_per_core: `${average_bosses_per_core}%`,
+        total_tracked_kills: total_tracked_kills,
+        average_magic_find: average_magic_find,
+        average_spawn_time: average_spawn_time,
+        average_kill_time: average_kill_time,
+        success_rate: `${(average_success_chance * 100).toFixed(2)}%`,
+      },
+      data: {
+        bosses: p.bosses,
+      },
+    });
+})
+
+router.get("/eman/:id", async (req, res) => {
+    let enderman = await Enderman.findById(req.params.id);
+    return res.status(200).json(enderman)
 })
 
 router.post('/eman/postboss', async (req, res) => {
@@ -24,20 +68,22 @@ router.post('/eman/postboss', async (req, res) => {
       questStartedAt: b.questStartedAt,
       bossStartedAt: b.bossStartedAt,
       questEndedAt: b.questEndedAt,
-      timeToSpawn: Math.floor((b.questStartedAt.getTime() - b.bossStartedAt.getTime())/1000),
-      timeToKill: Math.floor((b.bossStartedAt.getTime() - b.questEndedAt.getTime())/1000),
+      timeToSpawn: Math.floor((b.bossStartedAt - b.questStartedAt) / 1000),
+      timeToKill: Math.floor((b.questEndedAt - b.bossStartedAt) / 1000),
       totalXp: b.totalXp,
       meterXp: b.meterXp,
       magicFind: b.magicFind,
       drops: b.drops
     });
     try {
-        const player = Player.findOne({ uuid: b.killerUuid })
-        player.bosses.push(newEman)
-        await player.save()
-        return res.status(201).json({ success: true, boss: newEman })
+        const player = await Player.findOne({ uuid: b.killerUuid })
+        savedEman = await newEman.save()
+        player.bosses.push(savedEman)
+        player.save(() => {
+            return res.status(201).json({ success: true, boss: newEman });
+        })
     } catch(err) {
-        return res.status(500).json({ success: false, error: 500, message: "An error occurred", details: err })
+        return res.status(500).json({ success: false, error: 500, message: "An error occurred", details: err.message })
     }
 })
 
@@ -100,6 +146,15 @@ async function getUuidFromName(req, res, next) {
             return res.status(500).json({success: "false", error: 500, message: "An error occurred while getting that user's uuid. Either that player does not exist or the conversion service is down. Consider trying again by putting the uuid in as a query manually. When doing this, ensure that there are NO DASHES in the uuid."})
         })
     }
+    else if (res.queries.uuid != undefined) {
+        console.log(res.queries.uuid);
+        res.uuid = res.queries.uuid;
+        console.log(res.uuid);
+        next();
+    }
+    else {
+        return res.status(500).json({success: "false", error: 500, message: " i have no idea what happened, sorry :("})
+    }
 }
 
 async function populateEmanBosses(req, res, next) {
@@ -110,14 +165,14 @@ async function populateEmanBosses(req, res, next) {
         Player.findOne({ uuid: res.uuid })
         .populate('bosses')
         .exec((err, player) => {
-            if (err) return res.status(500).json({success: "false", error: 500, message: "The server ran into a problem while trying to populate your bosses.", details: err})
+            if (err) return res.status(500).json({success: "false", error: 500, message: "The server ran into a problem while trying to populate your bosses.", details: err.message})
             res.player = player
             next()
         })
     }
     catch (err) {
         console.log(err);
-        return res.status(500).json({ success: false, error: 500, message: "An error occurred in the server", details: err })
+        return res.status(500).json({ success: false, error: 500, message: "An error occurred in the server", details: err.message })
     }
 }
 
