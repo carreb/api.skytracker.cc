@@ -24,7 +24,7 @@ const EndermanSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ["killed", "failed", "cancelled"],
+        enum: ["killed", "failed"],
         required: true,
     },
     questStartedAt: {
@@ -68,7 +68,7 @@ const EndermanSchema = new mongoose.Schema({
 const Player = mongoose.model("Player", PlayerSchema)
 const Enderman = mongoose.model("Enderman", EndermanSchema) 
 
-module.exports = [
+module.exports = {
     Player,
     Enderman
-]
+}
