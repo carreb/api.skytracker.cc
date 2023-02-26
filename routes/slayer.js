@@ -89,10 +89,6 @@ router.post('/eman/postboss', async (req, res) => {
 
 
 
-
-
-
-
 // middleware
 
 function isEmpty(obj) {
@@ -100,15 +96,39 @@ function isEmpty(obj) {
 }
 
 async function createUser(req, res, next) {
+    console.log("Attempting to create user...")
     let uuid = req.body.uuid
+    console.log(`uuid: ${uuid}`);
     try {
         let user = await Player.findOne({ uuid: uuid })
         if (user == null) {
-            const newUser = new Player({
-                uuid: uuid
+            let validPlayer = await fetch(`https://playerdb.co/api/player/minecraft/${uuid}`)
+            .then((response) => response.json())
+            .then(async (data) => {
+                if (data.code == "player.found") {
+                    const newUser = new Player({
+                        uuid: uuid
+                    })
+                    const createdUser = await newUser.save()
+                    console.log("Returning 201 Created User")
+                    let returnedInfo = {
+                        success: true,
+                        user: createdUser,
+                        status: 201
+                    }
+                    return returnedInfo
+                } else {
+                    console.log("Ignoring request as uuid is not a valid minecraft account.")
+                    let returnedInfo = {
+                        success: false,
+                        error: 400,
+                        status: 400,
+                        message: "Not a valid Minecraft player UUID. (or the service is down?)"
+                    }
+                    return returnedInfo
+                }
             })
-            const createdUser = await newUser.save()
-            return res.status(201).json(createdUser)
+            return res.status(validPlayer.status).json(validPlayer)
         }
         return res.status(400).json({success: false, error: 400, message: "That player already exists."})
     }
